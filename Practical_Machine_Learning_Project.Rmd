@@ -1,0 +1,127 @@
+---
+title: "Practical Machine Learning - Project"
+author: "Scott Brown"
+date: "November 30, 2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+# Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+# Data Processing and General Prep (Library Load)
+
+```{r}
+# Load relevant libraries and data set
+
+library(caret)
+library(rattle)
+library(corrplot)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(randomForest)
+
+# Set seed for random numbers
+set.seed(80451)
+
+# Download data sets
+train_data <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"))
+test_data  <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"))
+
+# Remove NA data and near 0 variance
+train_data <- train_data[, -nearZeroVar(train_data)]
+train_data <- train_data[,(sapply(train_data, function(x) mean(is.na(x))) > 0.9)==FALSE]
+train_data <- train_data[, -(1:5)]
+
+
+# Partition training set further into two subsets 
+train_subsetdata  <- createDataPartition(train_data$classe, p=0.75, list=FALSE)
+train_subsetdata_train <- train_data[train_subsetdata, ]
+train_subsetdata_test  <- train_data[-train_subsetdata, ]
+
+# Display dimensions of subset data
+dim(train_subsetdata_train)
+dim(train_subsetdata_test)
+
+#head(train_subsetdata_train)
+#str(train_subsetdata_train)
+```
+
+#Exploratory Analysis
+
+For our initial exploration of the data we will run a correlation matrix to visualize some of the potentially key relationships in the data.
+
+```{r}
+# Display the correlation matrix
+corrplot(cor(train_subsetdata_train[,-54]), method = "shade", type = "lower", tl.cex = 0.6)
+         
+```
+
+As illustrated in the matrix above, there aren't a significant number of variables with a high correlation.
+
+
+#Decision Models
+
+We will run to separate models and select the one with the higher level of precision for our prediction exercise. 
+
+## 1 - Decision Tree
+
+```{r}
+#Process and display decision tree
+model_decisiontree <- rpart(classe ~ ., data=train_subsetdata_train, method="class")
+fancyRpartPlot(model_decisiontree)
+
+#Run prediction on subset test data
+predict_decisiontree <- predict(model_decisiontree, newdata=train_subsetdata_test, type="class")
+
+#Display confusion matrix to display accuracy of prediction
+confmatrix_decisiontree <- confusionMatrix(predict_decisiontree, train_subsetdata_test$classe)
+confmatrix_decisiontree
+
+```
+
+The accuracy of the decision tree model is `r confmatrix_decisiontree$overall['Accuracy']`
+
+Now we'll look at a different decision model and compare the accuracy.
+
+## Random Forest
+
+```{r}
+# Process and display model
+rf_crossvalidation <- trainControl(method="cv", number=3)
+model_randomforest <- train(classe ~ ., data=train_subsetdata_train, method="rf", trControl=rf_crossvalidation)    
+model_randomforest$finalModel
+
+#Run prediction on subset test data
+predict_randomforest <- predict(model_randomforest, newdata=train_subsetdata_test)
+
+#Display confusion matrix to display accuracy of prediction
+confmatrix_randomforest <- confusionMatrix(predict_randomforest, train_subsetdata_test$classe)
+confmatrix_randomforest
+```
+The accuracy of the decision tree model is `r confmatrix_randomforest$overall['Accuracy']`
+
+#Prediction
+
+The random forest decision tree appears to provide the most accurate prediction. As such, we will use that model with the test data to predict the quiz results.
+
+```{r}
+predict(model_randomforest, newdata=test_data)
+
+```
